@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// ✅ FileChange NÃO está aqui - já está em config.go!
+// ✅ FileChange e LineChange NÃO estão aqui - já estão em config.go!
 
 // DetectChangedFiles detecta arquivos modificados no diretório atual
 func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
@@ -66,12 +66,26 @@ func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
 				return err
 			}
 
+			// ✅ Calcula diff se tiver versão anterior
+			var lineChanges []LineChange
+			if len(config.Commits) > 0 {
+				lastCommit := config.Commits[len(config.Commits)-1]
+				for _, f := range lastCommit.Files {
+					if f.Path == path {
+						oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
+						lineChanges = CalculateDiff(string(oldContent), string(content))
+						break
+					}
+				}
+			}
+
 			changed = append(changed, FileChange{
-				Path:     path,
-				Hash:     hash,
-				Size:     info.Size(),
-				Modified: info.ModTime().Format(time.RFC3339),
-				Content:  content,
+				Path:        path,
+				Hash:        hash,
+				Size:        info.Size(),
+				Modified:    info.ModTime().Format(time.RFC3339),
+				Content:     content,
+				LineChanges: lineChanges,
 			})
 		}
 
@@ -134,12 +148,32 @@ func DetectChangedFilesInDir(config OpenVConfig, dirPath string) ([]FileChange, 
 				return err
 			}
 
+			// ✅ Calcula diff se tiver versão anterior
+			var lineChanges []LineChange
+			if len(config.Commits) > 0 {
+				lastCommit := config.Commits[len(config.Commits)-1]
+				for _, f := range lastCommit.Files {
+					if f.Path == path {
+						oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
+						lineChanges = CalculateDiff(string(oldContent), string(content))
+						break
+					}
+				}
+			}
+
+			// ✅ Converte para caminho relativo
+			relPath, err := filepath.Rel(".", path)
+			if err != nil {
+				relPath = path
+			}
+
 			changed = append(changed, FileChange{
-				Path:     path,
-				Hash:     hash,
-				Size:     info.Size(),
-				Modified: info.ModTime().Format(time.RFC3339),
-				Content:  content,
+				Path:        relPath,
+				Hash:        hash,
+				Size:        info.Size(),
+				Modified:    info.ModTime().Format(time.RFC3339),
+				Content:     content,
+				LineChanges: lineChanges,
 			})
 		}
 
@@ -176,6 +210,7 @@ func DetectChangedFile(config OpenVConfig, filePath string) ([]FileChange, error
 	if len(config.Commits) > 0 {
 		lastCommit := config.Commits[len(config.Commits)-1]
 		for _, file := range lastCommit.Files {
+			// ✅ Compara caminhos relativos
 			if file.Path == filePath && file.Hash == hash {
 				exists = true
 				break
@@ -189,12 +224,32 @@ func DetectChangedFile(config OpenVConfig, filePath string) ([]FileChange, error
 			return changed, err
 		}
 
+		// ✅ Calcula diff se tiver versão anterior
+		var lineChanges []LineChange
+		if len(config.Commits) > 0 {
+			lastCommit := config.Commits[len(config.Commits)-1]
+			for _, f := range lastCommit.Files {
+				if f.Path == filePath {
+					oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
+					lineChanges = CalculateDiff(string(oldContent), string(content))
+					break
+				}
+			}
+		}
+
+		// ✅ Converte para caminho relativo
+		relPath, err := filepath.Rel(".", filePath)
+		if err != nil {
+			relPath = filePath
+		}
+
 		changed = append(changed, FileChange{
-			Path:     filePath,
-			Hash:     hash,
-			Size:     info.Size(),
-			Modified: info.ModTime().Format(time.RFC3339),
-			Content:  content,
+			Path:        relPath,
+			Hash:        hash,
+			Size:        info.Size(),
+			Modified:    info.ModTime().Format(time.RFC3339),
+			Content:     content,
+			LineChanges: lineChanges,
 		})
 	}
 
@@ -229,6 +284,50 @@ func readFileContent(path string) (string, error) {
 // DecodeFileContent decodifica conteúdo de base64 para bytes
 func DecodeFileContent(content string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(content)
+}
+
+// CalculateDiff compara dois conteúdos e retorna as mudanças por linha
+func CalculateDiff(oldContent, newContent string) []LineChange {
+	var changes []LineChange
+
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	maxLines := len(oldLines)
+	if len(newLines) > maxLines {
+		maxLines = len(newLines)
+	}
+
+	for i := 0; i < maxLines; i++ {
+		var oldLine, newLine string
+		var changeType string
+
+		if i < len(oldLines) {
+			oldLine = oldLines[i]
+		}
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+
+		if i >= len(oldLines) {
+			changeType = "added"
+		} else if i >= len(newLines) {
+			changeType = "deleted"
+		} else if oldLine != newLine {
+			changeType = "modified"
+		} else {
+			continue
+		}
+
+		changes = append(changes, LineChange{
+			LineNumber: i + 1,
+			OldContent: oldLine,
+			NewContent: newLine,
+			ChangeType: changeType,
+		})
+	}
+
+	return changes
 }
 
 // loadIgnoreFile carrega a lista de arquivos ignorados do .openvignore
@@ -274,107 +373,4 @@ func shouldIgnore(path string, ignoreList []string) bool {
 	}
 
 	return false
-}
-
-// ✅ NOVA FUNÇÃO: Compara dois conteúdos e retorna as mudanças por linha
-func CalculateDiff(oldContent, newContent string) []LineChange {
-	var changes []LineChange
-
-	oldLines := strings.Split(oldContent, "\n")
-	newLines := strings.Split(newContent, "\n")
-
-	maxLines := len(oldLines)
-	if len(newLines) > maxLines {
-		maxLines = len(newLines)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		var oldLine, newLine string
-		var changeType string
-
-		if i < len(oldLines) {
-			oldLine = oldLines[i]
-		}
-		if i < len(newLines) {
-			newLine = newLines[i]
-		}
-
-		if i >= len(oldLines) {
-			// Linha adicionada
-			changeType = "added"
-		} else if i >= len(newLines) {
-			// Linha deletada
-			changeType = "deleted"
-		} else if oldLine != newLine {
-			// Linha modificada
-			changeType = "modified"
-		} else {
-			// Linha igual, não adiciona
-			continue
-		}
-
-		changes = append(changes, LineChange{
-			LineNumber: i + 1, // Linhas começam em 1
-			OldContent: oldLine,
-			NewContent: newLine,
-			ChangeType: changeType,
-		})
-	}
-
-	return changes
-}
-
-// ✅ NOVA FUNÇÃO: Aplica diff para restaurar conteúdo
-func ApplyDiff(baseContent string, changes []LineChange, revert bool) string {
-	lines := strings.Split(baseContent, "\n")
-
-	for _, change := range changes {
-		lineIdx := change.LineNumber - 1 // Converte para 0-based
-
-		if lineIdx >= len(lines) && change.ChangeType == "added" && !revert {
-			// Adiciona linha no final
-			lines = append(lines, change.NewContent)
-		} else if lineIdx < len(lines) {
-			if revert {
-				// Reverte: usa OldContent
-				if change.ChangeType == "added" {
-					// Remove linha adicionada
-					lines = append(lines[:lineIdx], lines[lineIdx+1:]...)
-				} else if change.ChangeType == "deleted" {
-					// Restaura linha deletada
-					lines = append(lines[:lineIdx], append([]string{change.OldContent}, lines[lineIdx:]...)...)
-				} else {
-					// Restaura modificação
-					lines[lineIdx] = change.OldContent
-				}
-			} else {
-				// Aplica: usa NewContent
-				if change.ChangeType == "added" {
-					lines = append(lines[:lineIdx], append([]string{change.NewContent}, lines[lineIdx:]...)...)
-				} else if change.ChangeType == "deleted" {
-					lines = append(lines[:lineIdx], lines[lineIdx+1:]...)
-				} else {
-					lines[lineIdx] = change.NewContent
-				}
-			}
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-// ✅ NOVA FUNÇÃO: Busca arquivo em um commit específico
-func FindFileInCommit(config OpenVConfig, commitIndex int, filePath string) (*FileChange, error) {
-	if commitIndex < 0 || commitIndex >= len(config.Commits) {
-		return nil, fmt.Errorf("commit %d não existe", commitIndex)
-	}
-
-	commit := config.Commits[commitIndex]
-	for _, file := range commit.Files {
-		if file.Path == filePath {
-			return &file, nil
-		}
-	}
-
-	return nil, fmt.Errorf("arquivo %s não encontrado no commit %d", filePath, commitIndex)
 }

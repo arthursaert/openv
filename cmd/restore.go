@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -57,10 +58,23 @@ func Restore(args []string) {
 		}
 	}
 
-	// Encontra o arquivo no commit
+	// ✅ Encontra o arquivo no commit (múltiplas tentativas de match)
 	var targetFile *core.FileChange
 	for _, f := range targetCommit.Files {
+		// Match 1: Caminho direto
 		if f.Path == filePath {
+			targetFile = &f
+			break
+		}
+		// Match 2: Caminho absoluto
+		absInput, _ := filepath.Abs(filePath)
+		absInCommit, _ := filepath.Abs(f.Path)
+		if absInput == absInCommit {
+			targetFile = &f
+			break
+		}
+		// Match 3: Nome do arquivo (último componente)
+		if filepath.Base(f.Path) == filepath.Base(filePath) {
 			targetFile = &f
 			break
 		}
@@ -68,6 +82,10 @@ func Restore(args []string) {
 
 	if targetFile == nil {
 		fmt.Printf("❌ Arquivo %s não encontrado no commit %d\n", filePath, commitIndex)
+		fmt.Printf("📁 Arquivos nesse commit:\n")
+		for _, f := range targetCommit.Files {
+			fmt.Printf("   • %s\n", f.Path)
+		}
 		os.Exit(1)
 	}
 

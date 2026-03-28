@@ -5,25 +5,23 @@ import (
 	"os"
 )
 
-// LineChange representa uma mudança em uma linha específica
 type LineChange struct {
 	LineNumber int    `json:"line_number"`
 	OldContent string `json:"old_content"`
 	NewContent string `json:"new_content"`
-	ChangeType string `json:"change_type"` // "modified", "added", "deleted"
+	ChangeType string `json:"change_type"`
 }
 
-// FileChange representa um arquivo modificado com conteúdo E diff
+// ✅ FileChange declarado AQUI (único lugar!)
 type FileChange struct {
 	Path        string       `json:"path"`
 	Hash        string       `json:"hash"`
 	Size        int64        `json:"size"`
 	Modified    string       `json:"modified"`
 	Content     string       `json:"content"`
-	LineChanges []LineChange `json:"line_changes,omitempty"` // ✅ NOVO: Mudanças por linha
+	LineChanges []LineChange `json:"line_changes,omitempty"`
 }
 
-// Commit representa um commit
 type Commit struct {
 	ID      string       `json:"id"`
 	Message string       `json:"message"`
@@ -31,7 +29,6 @@ type Commit struct {
 	Dir     string       `json:"dir"`
 }
 
-// OpenVConfig representa o arquivo .openv
 type OpenVConfig struct {
 	RepositoryID string   `json:"repository_id"`
 	Version      string   `json:"version"`
