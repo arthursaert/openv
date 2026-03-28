@@ -89,15 +89,24 @@ func Restore(args []string) {
 		os.Exit(1)
 	}
 
-	// Decodifica conteúdo
-	content, err := base64.StdEncoding.DecodeString(targetFile.Content)
+	// ✅ Decodifica conteúdo de base64
+	contentBytes, err := base64.StdEncoding.DecodeString(targetFile.Content)
 	if err != nil {
 		fmt.Printf("❌ Erro ao decodificar conteúdo: %v\n", err)
 		os.Exit(1)
 	}
 
+	// ✅ Se estava comprimido, descomprime
+	if targetFile.Compressed {
+		contentBytes, err = core.DecompressGzip(contentBytes)
+		if err != nil {
+			fmt.Printf("❌ Erro ao descomprimir: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	// Restaura arquivo
-	err = os.WriteFile(filePath, content, 0644)
+	err = os.WriteFile(filePath, contentBytes, 0644)
 	if err != nil {
 		fmt.Printf("❌ Erro ao restaurar arquivo: %v\n", err)
 		os.Exit(1)
@@ -105,6 +114,14 @@ func Restore(args []string) {
 
 	fmt.Printf("✅ Arquivo %s restaurado do commit %s\n", filePath, targetCommit.ID[:8])
 	fmt.Printf("📝 Mensagem do commit: %s\n", targetCommit.Message)
+
+	// ✅ Mostra info sobre binário/comprimido
+	if targetFile.Binary {
+		fmt.Printf("📦 Arquivo binário (%d bytes)\n", targetFile.Size)
+	} else if targetFile.Compressed {
+		fmt.Printf("🗜️ Arquivo comprimido com GZIP\n")
+	}
+
 	fmt.Printf("📊 %d mudança(s) de linha nesse arquivo:\n", len(targetFile.LineChanges))
 
 	for _, change := range targetFile.LineChanges {

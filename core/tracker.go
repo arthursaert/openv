@@ -11,7 +11,49 @@ import (
 	"time"
 )
 
-// ✅ FileChange e LineChange NÃO estão aqui - já estão em config.go!
+// isBinary detecta se um arquivo é binário pela extensão
+func isBinary(path string) bool {
+	binaryExts := []string{
+		".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico", ".webp",
+		".mp4", ".avi", ".mkv", ".mov", ".wmv",
+		".mp3", ".wav", ".flac", ".ogg",
+		".pdf", ".doc", ".docx", ".xls", ".xlsx",
+		".zip", ".rar", ".tar", ".gz", ".7z",
+		".exe", ".dll", ".so", ".bin",
+		".psd", ".ai", ".eps",
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	for _, e := range binaryExts {
+		if ext == e {
+			return true
+		}
+	}
+	return false
+}
+
+// isBinaryByContent detecta se um arquivo é binário pelo conteúdo
+func isBinaryByContent(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	buf := make([]byte, 8192)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return false
+	}
+
+	for i := 0; i < n; i++ {
+		if buf[i] == 0 {
+			return true
+		}
+	}
+
+	return false
+}
 
 // DetectChangedFiles detecta arquivos modificados no diretório atual
 func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
@@ -57,22 +99,52 @@ func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
 			for _, f := range lastCommit.Files {
 				if f.Path == path {
 					oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+
+					// ✅ Se estava comprimido, descomprime
+					if f.Compressed {
+						oldContentBytes, _ = DecompressGzip(oldContentBytes)
+					}
+
 					oldContent = string(oldContentBytes)
 					break
 				}
 			}
 		}
 
-		content, err := readFileContent(path)
+		// ✅ Lê o conteúdo atual
+		contentBytes, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 
-		// ✅ Calcula diff se tiver conteúdo anterior
-		if oldContent != "" {
-			newContent, _ := base64.StdEncoding.DecodeString(content)
-			lineChanges = CalculateDiff(oldContent, string(newContent))
+		// ✅ Detecta se é binário
+		binary := isBinary(path) || isBinaryByContent(path)
+
+		// ✅ Calcula diff SÓ se for texto
+		if !binary && oldContent != "" {
+			lineChanges = CalculateDiff(oldContent, string(contentBytes))
 		}
+
+		// ✅ Comprime com GZIP se for binário OU se for maior que 10KB
+		var finalContent []byte
+		var compressed bool
+
+		if binary || len(contentBytes) > 10240 {
+			compressedBytes, err := CompressGzip(contentBytes)
+			if err == nil {
+				finalContent = compressedBytes
+				compressed = true
+			} else {
+				finalContent = contentBytes
+				compressed = false
+			}
+		} else {
+			finalContent = contentBytes
+			compressed = false
+		}
+
+		// ✅ Codifica em base64
+		content := base64.StdEncoding.EncodeToString(finalContent)
 
 		// ✅ Converte para caminho relativo
 		relPath, err := filepath.Rel(".", path)
@@ -86,7 +158,9 @@ func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
 			Size:        info.Size(),
 			Modified:    info.ModTime().Format(time.RFC3339),
 			Content:     content,
-			LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+			Compressed:  compressed,
+			Binary:      binary,
+			LineChanges: lineChanges,
 		})
 
 		return nil
@@ -139,22 +213,52 @@ func DetectChangedFilesInDir(config OpenVConfig, dirPath string) ([]FileChange, 
 			for _, f := range lastCommit.Files {
 				if f.Path == path {
 					oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+
+					// ✅ Se estava comprimido, descomprime
+					if f.Compressed {
+						oldContentBytes, _ = DecompressGzip(oldContentBytes)
+					}
+
 					oldContent = string(oldContentBytes)
 					break
 				}
 			}
 		}
 
-		content, err := readFileContent(path)
+		// ✅ Lê o conteúdo atual
+		contentBytes, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 
-		// ✅ Calcula diff se tiver conteúdo anterior
-		if oldContent != "" {
-			newContent, _ := base64.StdEncoding.DecodeString(content)
-			lineChanges = CalculateDiff(oldContent, string(newContent))
+		// ✅ Detecta se é binário
+		binary := isBinary(path) || isBinaryByContent(path)
+
+		// ✅ Calcula diff SÓ se for texto
+		if !binary && oldContent != "" {
+			lineChanges = CalculateDiff(oldContent, string(contentBytes))
 		}
+
+		// ✅ Comprime com GZIP se for binário OU se for maior que 10KB
+		var finalContent []byte
+		var compressed bool
+
+		if binary || len(contentBytes) > 10240 {
+			compressedBytes, err := CompressGzip(contentBytes)
+			if err == nil {
+				finalContent = compressedBytes
+				compressed = true
+			} else {
+				finalContent = contentBytes
+				compressed = false
+			}
+		} else {
+			finalContent = contentBytes
+			compressed = false
+		}
+
+		// ✅ Codifica em base64
+		content := base64.StdEncoding.EncodeToString(finalContent)
 
 		// ✅ Converte para caminho relativo
 		relPath, err := filepath.Rel(".", path)
@@ -168,7 +272,9 @@ func DetectChangedFilesInDir(config OpenVConfig, dirPath string) ([]FileChange, 
 			Size:        info.Size(),
 			Modified:    info.ModTime().Format(time.RFC3339),
 			Content:     content,
-			LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+			Compressed:  compressed,
+			Binary:      binary,
+			LineChanges: lineChanges,
 		})
 
 		return nil
@@ -208,22 +314,52 @@ func DetectChangedFile(config OpenVConfig, filePath string) ([]FileChange, error
 		for _, f := range lastCommit.Files {
 			if f.Path == filePath {
 				oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+
+				// ✅ Se estava comprimido, descomprime
+				if f.Compressed {
+					oldContentBytes, _ = DecompressGzip(oldContentBytes)
+				}
+
 				oldContent = string(oldContentBytes)
 				break
 			}
 		}
 	}
 
-	content, err := readFileContent(filePath)
+	// ✅ Lê o conteúdo atual
+	contentBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return changed, err
 	}
 
-	// ✅ Calcula diff se tiver conteúdo anterior
-	if oldContent != "" {
-		newContent, _ := base64.StdEncoding.DecodeString(content)
-		lineChanges = CalculateDiff(oldContent, string(newContent))
+	// ✅ Detecta se é binário
+	binary := isBinary(filePath) || isBinaryByContent(filePath)
+
+	// ✅ Calcula diff SÓ se for texto
+	if !binary && oldContent != "" {
+		lineChanges = CalculateDiff(oldContent, string(contentBytes))
 	}
+
+	// ✅ Comprime com GZIP se for binário OU se for maior que 10KB
+	var finalContent []byte
+	var compressed bool
+
+	if binary || len(contentBytes) > 10240 {
+		compressedBytes, err := CompressGzip(contentBytes)
+		if err == nil {
+			finalContent = compressedBytes
+			compressed = true
+		} else {
+			finalContent = contentBytes
+			compressed = false
+		}
+	} else {
+		finalContent = contentBytes
+		compressed = false
+	}
+
+	// ✅ Codifica em base64
+	content := base64.StdEncoding.EncodeToString(finalContent)
 
 	// ✅ Converte para caminho relativo
 	relPath, err := filepath.Rel(".", filePath)
@@ -237,7 +373,9 @@ func DetectChangedFile(config OpenVConfig, filePath string) ([]FileChange, error
 		Size:        info.Size(),
 		Modified:    info.ModTime().Format(time.RFC3339),
 		Content:     content,
-		LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+		Compressed:  compressed,
+		Binary:      binary,
+		LineChanges: lineChanges,
 	})
 
 	return changed, nil
@@ -257,20 +395,6 @@ func calculateHash(path string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
-}
-
-// readFileContent lê o conteúdo do arquivo e retorna em base64
-func readFileContent(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
-}
-
-// DecodeFileContent decodifica conteúdo de base64 para bytes
-func DecodeFileContent(content string) ([]byte, error) {
-	return base64.StdEncoding.DecodeString(content)
 }
 
 // CalculateDiff compara dois conteúdos e retorna as mudanças por linha

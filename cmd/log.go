@@ -34,6 +34,14 @@ func Log() {
 			fmt.Println("   ─────────────────────────────")
 			for _, file := range commit.Files {
 				fmt.Printf("   📄 %s\n", file.Path)
+
+				// ✅ Mostra se é binário ou comprimido
+				if file.Binary {
+					fmt.Println("      📦 Arquivo binário (diff não aplicável)")
+				} else if file.Compressed {
+					fmt.Println("      🗜️ Comprimido com GZIP")
+				}
+
 				if len(file.LineChanges) > 0 {
 					for _, change := range file.LineChanges {
 						switch change.ChangeType {
@@ -45,7 +53,7 @@ func Log() {
 							fmt.Printf("      ✏️  ~%d: %s → %s\n", change.LineNumber, change.OldContent, change.NewContent)
 						}
 					}
-				} else {
+				} else if !file.Binary {
 					fmt.Println("      (sem mudanças de linha detectadas)")
 				}
 			}
