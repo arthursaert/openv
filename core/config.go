@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// ✅ LineChange declarado AQUI (único lugar!)
 type LineChange struct {
 	LineNumber int    `json:"line_number"`
 	OldContent string `json:"old_content"`
@@ -12,7 +13,7 @@ type LineChange struct {
 	ChangeType string `json:"change_type"`
 }
 
-// ✅ FileChange declarado AQUI (único lugar!)
+// ✅ FileChange com LineChanges
 type FileChange struct {
 	Path        string       `json:"path"`
 	Hash        string       `json:"hash"`

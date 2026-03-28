@@ -49,45 +49,45 @@ func DetectChangedFiles(config OpenVConfig) ([]FileChange, error) {
 			return err
 		}
 
-		exists := false
+		// ✅ Busca conteúdo anterior para calcular diff
+		var oldContent string
+		var lineChanges []LineChange
 		if len(config.Commits) > 0 {
 			lastCommit := config.Commits[len(config.Commits)-1]
-			for _, file := range lastCommit.Files {
-				if file.Path == path && file.Hash == hash {
-					exists = true
+			for _, f := range lastCommit.Files {
+				if f.Path == path {
+					oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+					oldContent = string(oldContentBytes)
 					break
 				}
 			}
 		}
 
-		if !exists {
-			content, err := readFileContent(path)
-			if err != nil {
-				return err
-			}
-
-			// ✅ Calcula diff se tiver versão anterior
-			var lineChanges []LineChange
-			if len(config.Commits) > 0 {
-				lastCommit := config.Commits[len(config.Commits)-1]
-				for _, f := range lastCommit.Files {
-					if f.Path == path {
-						oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
-						lineChanges = CalculateDiff(string(oldContent), string(content))
-						break
-					}
-				}
-			}
-
-			changed = append(changed, FileChange{
-				Path:        path,
-				Hash:        hash,
-				Size:        info.Size(),
-				Modified:    info.ModTime().Format(time.RFC3339),
-				Content:     content,
-				LineChanges: lineChanges,
-			})
+		content, err := readFileContent(path)
+		if err != nil {
+			return err
 		}
+
+		// ✅ Calcula diff se tiver conteúdo anterior
+		if oldContent != "" {
+			newContent, _ := base64.StdEncoding.DecodeString(content)
+			lineChanges = CalculateDiff(oldContent, string(newContent))
+		}
+
+		// ✅ Converte para caminho relativo
+		relPath, err := filepath.Rel(".", path)
+		if err != nil {
+			relPath = path
+		}
+
+		changed = append(changed, FileChange{
+			Path:        relPath,
+			Hash:        hash,
+			Size:        info.Size(),
+			Modified:    info.ModTime().Format(time.RFC3339),
+			Content:     content,
+			LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+		})
 
 		return nil
 	})
@@ -131,51 +131,45 @@ func DetectChangedFilesInDir(config OpenVConfig, dirPath string) ([]FileChange, 
 			return err
 		}
 
-		exists := false
+		// ✅ Busca conteúdo anterior para calcular diff
+		var oldContent string
+		var lineChanges []LineChange
 		if len(config.Commits) > 0 {
 			lastCommit := config.Commits[len(config.Commits)-1]
-			for _, file := range lastCommit.Files {
-				if file.Path == path && file.Hash == hash {
-					exists = true
+			for _, f := range lastCommit.Files {
+				if f.Path == path {
+					oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+					oldContent = string(oldContentBytes)
 					break
 				}
 			}
 		}
 
-		if !exists {
-			content, err := readFileContent(path)
-			if err != nil {
-				return err
-			}
-
-			// ✅ Calcula diff se tiver versão anterior
-			var lineChanges []LineChange
-			if len(config.Commits) > 0 {
-				lastCommit := config.Commits[len(config.Commits)-1]
-				for _, f := range lastCommit.Files {
-					if f.Path == path {
-						oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
-						lineChanges = CalculateDiff(string(oldContent), string(content))
-						break
-					}
-				}
-			}
-
-			// ✅ Converte para caminho relativo
-			relPath, err := filepath.Rel(".", path)
-			if err != nil {
-				relPath = path
-			}
-
-			changed = append(changed, FileChange{
-				Path:        relPath,
-				Hash:        hash,
-				Size:        info.Size(),
-				Modified:    info.ModTime().Format(time.RFC3339),
-				Content:     content,
-				LineChanges: lineChanges,
-			})
+		content, err := readFileContent(path)
+		if err != nil {
+			return err
 		}
+
+		// ✅ Calcula diff se tiver conteúdo anterior
+		if oldContent != "" {
+			newContent, _ := base64.StdEncoding.DecodeString(content)
+			lineChanges = CalculateDiff(oldContent, string(newContent))
+		}
+
+		// ✅ Converte para caminho relativo
+		relPath, err := filepath.Rel(".", path)
+		if err != nil {
+			relPath = path
+		}
+
+		changed = append(changed, FileChange{
+			Path:        relPath,
+			Hash:        hash,
+			Size:        info.Size(),
+			Modified:    info.ModTime().Format(time.RFC3339),
+			Content:     content,
+			LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+		})
 
 		return nil
 	})
@@ -206,52 +200,45 @@ func DetectChangedFile(config OpenVConfig, filePath string) ([]FileChange, error
 		return changed, err
 	}
 
-	exists := false
+	// ✅ Busca conteúdo anterior para calcular diff
+	var oldContent string
+	var lineChanges []LineChange
 	if len(config.Commits) > 0 {
 		lastCommit := config.Commits[len(config.Commits)-1]
-		for _, file := range lastCommit.Files {
-			// ✅ Compara caminhos relativos
-			if file.Path == filePath && file.Hash == hash {
-				exists = true
+		for _, f := range lastCommit.Files {
+			if f.Path == filePath {
+				oldContentBytes, _ := base64.StdEncoding.DecodeString(f.Content)
+				oldContent = string(oldContentBytes)
 				break
 			}
 		}
 	}
 
-	if !exists {
-		content, err := readFileContent(filePath)
-		if err != nil {
-			return changed, err
-		}
-
-		// ✅ Calcula diff se tiver versão anterior
-		var lineChanges []LineChange
-		if len(config.Commits) > 0 {
-			lastCommit := config.Commits[len(config.Commits)-1]
-			for _, f := range lastCommit.Files {
-				if f.Path == filePath {
-					oldContent, _ := base64.StdEncoding.DecodeString(f.Content)
-					lineChanges = CalculateDiff(string(oldContent), string(content))
-					break
-				}
-			}
-		}
-
-		// ✅ Converte para caminho relativo
-		relPath, err := filepath.Rel(".", filePath)
-		if err != nil {
-			relPath = filePath
-		}
-
-		changed = append(changed, FileChange{
-			Path:        relPath,
-			Hash:        hash,
-			Size:        info.Size(),
-			Modified:    info.ModTime().Format(time.RFC3339),
-			Content:     content,
-			LineChanges: lineChanges,
-		})
+	content, err := readFileContent(filePath)
+	if err != nil {
+		return changed, err
 	}
+
+	// ✅ Calcula diff se tiver conteúdo anterior
+	if oldContent != "" {
+		newContent, _ := base64.StdEncoding.DecodeString(content)
+		lineChanges = CalculateDiff(oldContent, string(newContent))
+	}
+
+	// ✅ Converte para caminho relativo
+	relPath, err := filepath.Rel(".", filePath)
+	if err != nil {
+		relPath = filePath
+	}
+
+	changed = append(changed, FileChange{
+		Path:        relPath,
+		Hash:        hash,
+		Size:        info.Size(),
+		Modified:    info.ModTime().Format(time.RFC3339),
+		Content:     content,
+		LineChanges: lineChanges, // ✅ SALVA OS LINECHANGES!
+	})
 
 	return changed, nil
 }

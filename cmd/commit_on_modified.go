@@ -18,17 +18,15 @@ func CommitOnModified(args []string) {
 	}
 
 	message := args[0]
-	targetPath := args[1]
+	targetPath := args[1] // ✅ Mantém como o usuário digitou!
 
-	// Resolve caminho absoluto
-	absPath, err := filepath.Abs(targetPath)
-	if err != nil {
-		fmt.Printf("❌ Erro ao resolver caminho: %v\n", err)
-		os.Exit(1)
+	// ✅ Verifica existência sem converter para absoluto
+	checkPath := targetPath
+	if !filepath.IsAbs(targetPath) {
+		checkPath = filepath.Join(".", targetPath)
 	}
 
-	// Verifica se arquivo/diretório existe
-	info, err := os.Stat(absPath)
+	info, err := os.Stat(checkPath)
 	if os.IsNotExist(err) {
 		fmt.Printf("❌ Arquivo ou diretório não existe: %s\n", targetPath)
 		os.Exit(1)
@@ -47,17 +45,15 @@ func CommitOnModified(args []string) {
 
 	var changedFiles []core.FileChange
 
-	// ✅ Verifica se é arquivo ou diretório
+	// ✅ Passa targetPath (não absoluto) pro tracker
 	if info.IsDir() {
-		// É um diretório - percorre todos os arquivos
-		changedFiles, err = core.DetectChangedFilesInDir(config, absPath)
+		changedFiles, err = core.DetectChangedFilesInDir(config, targetPath)
 		if err != nil {
 			fmt.Printf("❌ Erro ao detectar mudanças: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		// ✅ É um arquivo único - verifica só ele
-		changedFiles, err = core.DetectChangedFile(config, absPath)
+		changedFiles, err = core.DetectChangedFile(config, targetPath)
 		if err != nil {
 			fmt.Printf("❌ Erro ao detectar mudanças: %v\n", err)
 			os.Exit(1)

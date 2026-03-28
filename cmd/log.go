@@ -45,6 +45,8 @@ func Log() {
 							fmt.Printf("      ✏️  ~%d: %s → %s\n", change.LineNumber, change.OldContent, change.NewContent)
 						}
 					}
+				} else {
+					fmt.Println("      (sem mudanças de linha detectadas)")
 				}
 			}
 		}
